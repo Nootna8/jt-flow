@@ -1,0 +1,69 @@
+typedef struct __attribute__ ((packed)) OCL_AVMotionVector {
+    int source;
+    /**
+     * Width and height of the block.
+     */
+    uchar w, h;
+    /**
+     * Absolute source position. Can be outside the frame area.
+     */
+    short src_x, src_y;
+    /**
+     * Absolute destination position. Can be outside the frame area.
+     */
+    short dst_x, dst_y;
+    /**
+     * Extra flag information.
+     * Currently unused.
+     */
+    ulong flags;
+    /**
+     * Motion vector
+     * src_x = dst_x + motion_x / motion_scale
+     * src_y = dst_y + motion_y / motion_scale
+     */
+    int motion_x, motion_y;
+    
+    ushort motion_scale;
+} OCL_AVMotionVector;
+
+#define PI_F 3.141592654f
+
+void cartesian_to_polar(float x, float y, float* magnitude, float* angle_degrees) {
+    *magnitude = sqrt(x * x + y * y);
+    *angle_degrees = atan(y / x) * 180.0f / PI_F;
+    if (x < 0) {
+        *angle_degrees += 180.0f;
+    }
+    else if (y < 0) {
+        *angle_degrees += 360.0f;
+    }
+}
+
+__kernel void vectorFrame(
+    float magnitude_threshold,
+    __global OCL_AVMotionVector* vectors,
+    __global int* dst,
+
+    int dst_step,
+    int dst_offset,
+    int dst_rows,
+    int dst_cols
+) {
+    int x = get_global_id(0);
+    OCL_AVMotionVector* vector = vectors + x;
+   
+    float magnitude, angle;
+    cartesian_to_polar(vector->motion_x, vector->motion_y, &magnitude, &angle);
+    if (magnitude < magnitude_threshold) {
+        return;
+    }
+
+    int myAngle = (int)angle / 2;
+    if (myAngle < 0 || myAngle >= 180) {
+        return;
+    }
+
+    int dst_index = (myAngle * dst_step + dst_offset) / sizeof(int);
+    atomic_add(&dst[dst_index], 7);
+}
