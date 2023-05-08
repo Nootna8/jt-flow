@@ -84,7 +84,7 @@ protected:
     // Decoder 1
     AVDictionary* opts_1 = NULL;
     AVCodecContext *dec_ctx_1 = NULL;
-    const AVCodec* dec_1 = NULL;
+    AVCodec* dec_1 = NULL;
     AVStream *video_stream_1 = NULL;
     AVFrame *frame_1 = NULL;
     AVPacket* pkt_dec_1 = NULL;
@@ -141,8 +141,12 @@ void MyReader::init_decoder_1(const char* src_filename)
         throw std::runtime_error("Could not allocate packet");
     }
 
-    if (avformat_open_input(&fmt_ctx, src_filename, NULL, NULL) < 0) {
-        throw std::runtime_error("Could not open source file");
+    av_register_all();
+    avcodec_register_all();
+
+    ret = avformat_open_input(&fmt_ctx, src_filename, NULL, NULL);
+    if (ret < 0) {
+        throw std::runtime_error("Could not open source file: " + av_err2str(ret));
 	}
 
     if (avformat_find_stream_info(fmt_ctx, NULL) < 0) {

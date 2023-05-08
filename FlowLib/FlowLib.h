@@ -21,13 +21,13 @@ typedef struct FlowProperties {
 } FlowProperties;
 
 #ifdef _WIN32
-#ifdef FLOWLIB_IMPORT
-#define FLOWLIB_API __declspec(dllimport)
+    #ifdef FLOWLIB_IMPORT
+    #define FLOWLIB_API __declspec(dllimport)
+    #else
+    #define FLOWLIB_API __declspec(dllexport)
+    #endif
 #else
-#define FLOWLIB_API __declspec(dllexport)
-#endif
-#else
-#define FLOWLIB_API
+    #define FLOWLIB_API
 #endif
 
 FLOWLIB_API FlowHandle FlowCreateHandle(const char* videoPath, FlowProperties* properties);

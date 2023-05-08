@@ -1,0 +1,22 @@
+{
+  "name": "jtflow-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ffi-napi": "^4.0.3",
+    "ipfs": "^0.66.0",
+    "nodemon": "^2.0.22",
+    "orbit-db": "^0.29.0",
+    "ref-napi": "^3.0.3",
+    "ref-struct-di": "^1.1.1",
+    "stream": "^0.0.2",
+    "tempfile": "^5.0.0"
+  }
+}

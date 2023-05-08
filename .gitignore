@@ -1,7 +1,10 @@
-build
-!build/.gitkeep
+FlowLib/build
+!FlowLib/build/.gitkeep
 .vscode
 .vs
 out
 *.bmp
 *.png
+Server/node_modules
+Server/ipfs*
+Server/orbitdb
