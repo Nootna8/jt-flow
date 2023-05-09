@@ -5,7 +5,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
 # list(APPEND CMAKE_PREFIX_PATH "C:/dev/JackerTracker/lib/opencv/Build")
 # list(APPEND CMAKE_PREFIX_PATH "C:/dev/JackerTracker/build/_deps/ffmpeg_dev-src")
 
-find_package(OpenCV)
+list(APPEND CMAKE_PREFIX_PATH "/usr/local/lib/cmake/opencv4")
+
+find_package(OpenCV REQUIRED)
 find_package(FFmpeg REQUIRED)
 find_package(OpenCL REQUIRED)
 

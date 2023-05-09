@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+    - "v*.*.*"
+    branches:
+    - master
+  pull_request:
+    types:
+    - opened
+    - reopened
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+      
+    if: "!contains(github.event.head_commit.message, '[ci-skip]')"
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Build and publish a Docker image for ${{ github.repository }}
+      uses: macbre/push-to-ghcr@master
+      with:
+        image_name: ${{ github.repository }}
+        github_token: ${{ secrets.GITHUB_TOKEN }}
