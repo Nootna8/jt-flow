@@ -126,7 +126,7 @@ void runMatPool(cv::cuda::GpuMat flow, cv::cuda::GpuMat output, uint8_t pools, f
     assert(flow.channels() == 2);
     assert(output.rows == 1 && output.cols == pools);
 
-    dim3 block(32, 8);
+    dim3 block(8, 8);
     dim3 grid(divUp(flow.cols, block.x), divUp(flow.rows, block.y));
 
     MAT_POOL << <grid, block >> > (

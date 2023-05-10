@@ -30,12 +30,8 @@ int main(int argc, char* argv[])
         clock_t start = clock();
         FlowRun(handle, [](FlowHandle handle, int frame_number) {
             FrameNumber length = FlowGetLength(handle);
-
-            if(frame_number % 60 == 0) {
-                std::cout << frame_number << " / " << length << "\n";
-            }
-
-        });
+            std::cout << frame_number << " / " << length << "\n";
+        }, 120);
         clock_t end = clock();
         double elapsed_time = (double)(end - start) / CLOCKS_PER_SEC;
 	    fprintf(stderr, "Elapsed time: %f seconds\n", elapsed_time);

@@ -56,7 +56,10 @@ public:
 
     int GetNumMs()
     {
-        return av_q2d(video_stream_1->time_base) * 1000;
+        double time_base = (double)video_stream_1->time_base.num / (double)video_stream_1->time_base.den;
+        unsigned long duration = (double)video_stream_1->duration * time_base * 1000.0;
+        
+        return duration;
     }
 
     int CurrentFrame()
@@ -84,7 +87,13 @@ protected:
     // Decoder 1
     AVDictionary* opts_1 = NULL;
     AVCodecContext *dec_ctx_1 = NULL;
+
+#if LIBAVFORMAT_VERSION_MINOR != 29
+    const AVCodec* dec_1 = NULL;
+#else
     AVCodec* dec_1 = NULL;
+#endif
+
     AVStream *video_stream_1 = NULL;
     AVFrame *frame_1 = NULL;
     AVPacket* pkt_dec_1 = NULL;
@@ -141,8 +150,8 @@ void MyReader::init_decoder_1(const char* src_filename)
         throw std::runtime_error("Could not allocate packet");
     }
 
-    av_register_all();
-    avcodec_register_all();
+    // av_register_all();
+    // avcodec_register_all();
 
     ret = avformat_open_input(&fmt_ctx, src_filename, NULL, NULL);
     if (ret < 0) {

@@ -65,5 +65,5 @@ __kernel void vectorFrame(
     }
 
     int dst_index = (myAngle * dst_step + dst_offset) / sizeof(int);
-    atomic_add(&dst[dst_index], 7);
+    atomic_add(&dst[dst_index], 1);
 }

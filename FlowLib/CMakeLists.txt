@@ -2,133 +2,148 @@ cmake_minimum_required(VERSION 3.10)
 project(JTFlow)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
-# list(APPEND CMAKE_PREFIX_PATH "C:/dev/JackerTracker/lib/opencv/Build")
-# list(APPEND CMAKE_PREFIX_PATH "C:/dev/JackerTracker/build/_deps/ffmpeg_dev-src")
 
+list(APPEND CMAKE_PREFIX_PATH "C:/dev/JackerTracker/lib/opencv/Build")
+list(APPEND CMAKE_PREFIX_PATH "C:/dev/JackerTracker/build/_deps/ffmpeg_dev-src")
 list(APPEND CMAKE_PREFIX_PATH "/usr/local/lib/cmake/opencv4")
 
 find_package(OpenCV REQUIRED)
 find_package(FFmpeg REQUIRED)
 find_package(OpenCL REQUIRED)
+find_package(Python3 COMPONENTS Development NumPy REQUIRED)
 
 # OpenCV
 include_directories(${OpenCV_INCLUDE_DIRS})
-set(OpenCV_LIBRARIES "-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs")
-# set(OpenCV_LIBRARIES
-#     opencv_calib3d
-#     opencv_core
-#     opencv_cudaarithm
-#     opencv_cudaimgproc
-#     opencv_cudaoptflow
-#     opencv_cudawarping
-#     opencv_cudev
-#     opencv_features2d
-#     opencv_flann
-#     opencv_imgcodecs
-#     opencv_imgproc
-#     opencv_optflow
-#     opencv_video
-#     opencv_videoio
-#     opencv_ximgproc
-# )
-message("OpenCV: ${OpenCV_LIBRARIES}")
+# set(OpenCV_LIBRARIES "-lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs")
+set(OpenCV_LIBRARIES
+    # opencv_calib3d
+    opencv_core
+    # opencv_cudaarithm
+    # opencv_cudaimgproc
+    opencv_cudaoptflow
+    # opencv_cudawarping
+    # opencv_cudev
+    # opencv_features2d
+    # opencv_flann
+    opencv_imgcodecs
+    # opencv_imgproc
+    # opencv_optflow
+    # opencv_video
+    # opencv_videoio
+    # opencv_ximgproc
+)
+
 
 
 # FFmpeg
 include_directories(${FFMPEG_INCLUDE_DIRS})
-set(FFMPEG_LIBRARIES "-lavcodec -lavutil -lavformat")
-message("FFmpeg: ${FFMPEG_LIBRARIES}")
-message("OpenCL ${OpenCL_INCLUDE_DIRS}")
-
-
-# set(CMAKE_VERBOSE_MAKEFILE ON)
-# set(CMAKE_C_COMPILER "gcc")
-# set(CMAKE_CXX_COMPILER "g++")
-
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-
-SET(MY_TARGETS "")
-
-if(NOT ${SKIP_BUILD_CUDA})
-    # -- JTFlowCuda --
-
-    add_library(JTFlowCuda SHARED
-        FlowLibShared.hpp
-        FlowLibShared.cpp
-
-        cuda/FFmpegDemuxer.h
-        cuda/NvDecoder.h
-        cuda/nv12_to_rgb.h
-        cuda/ReadFlow.h
-
-        cuda/FlowLib.cpp
-        cuda/NvDecoder.cpp
-        cuda/nv12_to_rgb.cu
-        cuda/ReadFlow.cu
-    )
-    set_property(TARGET JTFlowCuda PROPERTY CXX_STANDARD 20)
-
-    enable_language(CUDA)
-    set_source_files_properties(cuda/nv12_to_rgb.cu PROPERTIES LANGUAGE CUDA)
-    set_source_files_properties(cuda/ReadFlow.cu PROPERTIES LANGUAGE CUDA)
-
-    target_link_libraries(JTFlowCuda PRIVATE
-        ${FFMPEG_LIBRARIES}
-        ${OpenCV_LIBRARIES}
-        cuda
-        nvcuvid
-    )
-
-    install(TARGETS JTFlowCuda LIBRARY DESTINATION lib)
+if(LINUX OR MINGW)
+    set(FFMPEG_LIBRARIES "-lavcodec -lavutil -lavformat")
 endif()
 
-# if (NOT ${SKIP_BUILD_LAV})
-    # -- JTFlowLav --
+# message("OpenCV: ${OpenCV_LIBRARIES}")
+# message("FFmpeg: ${FFMPEG_LIBRARIES}")
+# message("OpenCL ${OpenCL_INCLUDE_DIRS}")
+# message("Python: ${Python3_LIBRARIES}")
 
-    add_library(JTFlowLav SHARED
-        FlowLibShared.hpp
-        FlowLibShared.cpp
+if(MINGW)
+    set(CMAKE_C_COMPILER "gcc")
+    set(CMAKE_CXX_COMPILER "g++")
+endif()
 
-        lav/Reader.hpp
-        
-        lav/Reader.cpp
-        lav/FlowLib.cpp
-    )
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-    set_property(TARGET JTFlowLav PROPERTY CXX_STANDARD 17)
+# -- JTFlowTpl --
+SET(SRC_ADD
+    src/FlowLibShared.hpp
+    src/FlowLibShared.cpp
+)
+SET(INCLUDE_ADD
+    ${Python3_INCLUDE_DIRS}
+    ${Python3_NumPy_INCLUDE_DIRS}
+)
+SET(LIB_ADD
+    ${Python3_LIBRARIES}
+    ${FFMPEG_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+)
 
-    set(OpenCV_LIBRARIES
-        opencv_core
-        opencv_imgcodecs
-        opencv_imgproc
-    )
+# -- JTFlowCuda --
 
-    target_link_libraries(JTFlowLav PRIVATE
-        ${FFMPEG_LIBRARIES}
-        ${OpenCV_LIBRARIES}
-        ${OpenCL_LIBRARIES}
-    )
+add_library(JTFlowCuda SHARED
+    cuda/FFmpegDemuxer.h
+    cuda/NvDecoder.h
+    cuda/nv12_to_rgb.h
+    cuda/ReadFlow.h
 
-    # find_path(BSHOSHANY_THREAD_POOL_INCLUDE_DIRS "BS_thread_pool.hpp" PATHS "/usr/local/src/vcpkg")
+    cuda/FlowLib.cpp
+    cuda/NvDecoder.cpp
+    cuda/nv12_to_rgb.cu
+    cuda/ReadFlow.cu
 
-    target_include_directories(JTFlowLav PRIVATE
-        "/usr/include/opencv4/"
-        # ${OpenCL_INCLUDE_DIRS}
-        # "/usr/local/src/vcpkg/installed/x64-linux/include"
-        # ${BSHOSHANY_THREAD_POOL_INCLUDE_DIRS}
-    )
+    ${SRC_ADD}
+)
+# set_property(TARGET JTFlowCuda PROPERTY CXX_STANDARD 20)
 
-    install(TARGETS JTFlowLav LIBRARY DESTINATION lib)
-# endif()
+enable_language(CUDA)
+set_source_files_properties(cuda/nv12_to_rgb.cu PROPERTIES LANGUAGE CUDA)
+set_source_files_properties(cuda/ReadFlow.cu PROPERTIES LANGUAGE CUDA)
 
+SET(LIB_CUVID "nvcuvid")
+if(DOCKER)
+    SET(LIB_CUVID "/usr/lib/x86_64-linux-gnu/libnvcuvid.so.1")
+endif()
 
-# if(NOT ${SKIP_BUILD_UTIL})
-    # -- JTFlowUtil --
+target_link_libraries(JTFlowCuda PRIVATE
+    cuda
+    ${LIB_CUVID}
+    ${LIB_ADD}
+)
+target_include_directories(JTFlowCuda PRIVATE
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+    ${INCLUDE_ADD}
+)
 
-    # add_library(JTFlow SHARED FlowLibStub.c)
-    add_executable(JTFlowUtil Main.cpp)
-    target_compile_definitions(JTFlowUtil PRIVATE FLOWLIB_IMPORT)
-    target_link_libraries(JTFlowUtil PRIVATE JTFlowLav)
+install(TARGETS JTFlowCuda LIBRARY DESTINATION lib)
 
-    install(TARGETS JTFlowUtil RUNTIME DESTINATION bin)
-# endif()
+# -- JTFlowLav --
+
+add_library(JTFlowLav SHARED
+    lav/Reader.hpp
+    
+    lav/Reader.cpp
+    lav/FlowLib.cpp
+
+    ${SRC_ADD}
+)
+
+# set(OpenCV_LIBRARIES
+#     opencv_core
+#     opencv_imgcodecs
+#     opencv_imgproc
+# )
+
+target_link_libraries(JTFlowLav PRIVATE
+    ${OpenCL_LIBRARIES}
+    ${LIB_ADD}
+)
+
+target_include_directories(JTFlowLav PRIVATE
+    ${OpenCL_INCLUDE_DIRS}
+    ${INCLUDE_ADD}
+)
+
+install(TARGETS JTFlowLav LIBRARY DESTINATION lib)
+
+# -- JTFlowUtil --
+
+# add_library(JTFlow SHARED FlowLibStub.c)
+add_executable(JTFlowUtilLav src/Main.cpp)
+target_compile_definitions(JTFlowUtilLav PRIVATE FLOWLIB_IMPORT)
+target_link_libraries(JTFlowUtilLav PRIVATE JTFlowLav)
+
+add_executable(JTFlowUtilCuda src/Main.cpp)
+target_compile_definitions(JTFlowUtilCuda PRIVATE FLOWLIB_IMPORT)
+target_link_libraries(JTFlowUtilCuda PRIVATE JTFlowCuda)
+
+install(TARGETS JTFlowUtilLav JTFlowUtilCuda RUNTIME DESTINATION bin)

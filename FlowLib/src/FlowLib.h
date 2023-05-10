@@ -21,22 +21,24 @@ typedef struct FlowProperties {
 } FlowProperties;
 
 #ifdef _WIN32
-    #ifdef FLOWLIB_IMPORT
-    #define FLOWLIB_API __declspec(dllimport)
-    #else
-    #define FLOWLIB_API __declspec(dllexport)
-    #endif
+#ifdef FLOWLIB_IMPORT
+#define FLOWLIB_API __declspec(dllimport)
 #else
-    #define FLOWLIB_API
+#define FLOWLIB_API __declspec(dllexport)
+#endif
+#else
+#define FLOWLIB_API
 #endif
 
 FLOWLIB_API FlowHandle FlowCreateHandle(const char* videoPath, FlowProperties* properties);
-FLOWLIB_API void FlowDestroyHandle(FlowHandle handle);
-FLOWLIB_API void FlowSetLogger(LoggingCallback callback);
-FLOWLIB_API void FlowRun(FlowHandle handle, FlowRunCallback callback);
+FLOWLIB_API bool FlowDestroyHandle(FlowHandle handle);
+FLOWLIB_API bool FlowSetLogger(LoggingCallback callback);
+FLOWLIB_API bool FlowRun(FlowHandle handle, FlowRunCallback callback, int callbackInterval);
 
 FLOWLIB_API FrameNumber FlowGetLength(FlowHandle handle);
-FLOWLIB_API void FlowDrawRange(FlowHandle handle, FrameRange range, DrawCallback callback, void* userData);
-FLOWLIB_API void FlowCalcWave(FlowHandle handle, FrameRange range, DrawCallback callback, void* userData);
+FLOWLIB_API FrameNumber FlowGetLengthMs(FlowHandle handle);
+FLOWLIB_API bool FlowDrawRange(FlowHandle handle, FrameRange range, DrawCallback callback, void* userData);
+FLOWLIB_API bool FlowCalcWave(FlowHandle handle, FrameRange range, DrawCallback callback, void* userData);
 FLOWLIB_API float FlowProgress(FlowHandle handle);
-FLOWLIB_API void FlowSave(FlowHandle handle, const char* path);
+FLOWLIB_API bool FlowSave(FlowHandle handle, const char* path);
+FLOWLIB_API char* FlowLastError();

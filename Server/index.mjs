@@ -4,16 +4,16 @@ import * as ref from 'ref-napi'
 import * as StructDi from 'ref-struct-di'
 import tempfile from 'tempfile';
 import fs from 'fs';
+import path from 'path';
 import * as IPFS from 'ipfs-core'
 import OrbitDB from 'orbit-db'
-import * as stream from 'stream'
 import { env } from 'process';
 
 const StructType = StructDi.default (ref);
 
 var FrameNumberType = ref.types.ulong;
 
-var FlowPropertiesStruct = StructType({
+const FlowPropertiesStruct = StructType({
   'numberOfPools': ref.types.int,
   'maxValue': ref.types.float,
   'overlayHalf': ref.types.bool,
@@ -21,6 +21,17 @@ var FlowPropertiesStruct = StructType({
   'focusSize': ref.types.float,
   'waveSmoothing1': ref.types.float
 });
+
+var FrameRangeStruct = StructType({
+  'fromFrame': FrameNumberType,
+  'toFrame': FrameNumberType
+});
+
+const ActionStruct = StructType({
+  'timeFrame': ref.types.int,
+  'actionPos': ref.types.int
+});
+const ActionStructPtr = ref.refType(ActionStruct);
 
 var FlowProperties = new FlowPropertiesStruct({
   'numberOfPools': 180,
@@ -33,13 +44,42 @@ var FlowProperties = new FlowPropertiesStruct({
 
 var FlowPropertiesPtr = ref.refType(FlowPropertiesStruct);
 
-var flowLib = ffi.Library('/usr/local/src/FlowLib/build/libJTFlowLav', {
-  'FlowCreateHandle': [ 'pointer', [ 'string', FlowPropertiesPtr ] ],
-  'FlowDestroyHandle': [ 'void', [ 'pointer' ] ],
-  'FlowRun': ['void', ['pointer', 'pointer']],
-  'FlowGetLength': [FrameNumberType, ['pointer']],
-  'FlowSave': ['void', ['pointer', 'string']]
-});
+var lib = env.FLOWLIB || '/app/FlowLib/build/libJTFlowLav'
+// var lib = env.FLOWLIB  || 'C:/dev/JackerTracker/JTFlow/FlowLib/build/Release/JTFlowCuda.dll'
+
+try {
+  var flowLib = ffi.Library(lib, {
+    'FlowCreateHandle': [ 'pointer', [ 'string', FlowPropertiesPtr ] ],
+    'FlowDestroyHandle': [ 'bool', [ 'pointer' ] ],
+    'FlowRun': ['bool', ['pointer', 'pointer', 'int']],
+    'FlowGetLength': [FrameNumberType, ['pointer']],
+    'FlowGetLengthMs': [FrameNumberType, ['pointer']],
+    'FlowSave': ['bool', ['pointer', 'string']],
+    'FlowCalcWave': ['bool', ['pointer', FrameRangeStruct, 'pointer', 'pointer']],
+    'FlowLastError': ['string', []],
+    'FlowSetLogger': ['bool', ['pointer']]
+  });
+} catch(e) {
+  console.log('Library error', e);
+  process.exit(1);
+}
+
+function callFlowLib(result) {
+  if(!result) {
+    var error = flowLib.FlowLastError();
+    console.log('Error falsy result: ', error, '|');
+    throw new Error(error);
+  }
+
+  return result;
+}
+
+var logCallback = ffi.Callback('void', ['int', 'string'], function(level, message) {
+  console.log('FlowLib: ', message);
+})
+
+// callFlowLib(flowLib.FlowSetLogger(logCallback));
+
 
 function createFlow(path) {
   var flowHandle = null;
@@ -47,26 +87,90 @@ function createFlow(path) {
 
   try {
     flowHandle = flowLib.FlowCreateHandle(path, FlowProperties.ref());
-    var nbFrames = flowLib.FlowGetLength(flowHandle);
+    var error = flowLib.FlowLastError();
+    if(error) {
+      console.log('Error', error, '|');
+      throw new Error(error);
+    }
+    var nbFrames = callFlowLib(flowLib.FlowGetLength(flowHandle));
 
-    flowLib.FlowRun(flowHandle, ffi.Callback('void', ['pointer', 'int'], function(flowHandle, frame_number) {
-      if(frame_number > 0 && frame_number % 120 == 0) {
-        console.log(frame_number + " / " + nbFrames);
-      }
-    }));
+    callFlowLib(flowLib.FlowRun(flowHandle, ffi.Callback('void', ['pointer', 'int'], function(flowHandle, frame_number) {
+      console.log(frame_number + " / " + nbFrames);
+    }), 120));
+
+    var frameRange = new FrameRangeStruct({
+      'fromFrame': 0,
+      'toFrame': nbFrames
+    });
 
     tmpimg = tempfile({'extension': 'png'});
-    flowLib.FlowSave(flowHandle, tmpimg);
+    callFlowLib(flowLib.FlowSave(flowHandle, tmpimg));
+    console.log('Flow saved');
+
   } catch(e) {
     console.log('error', e);
     tmpimg = null;
   }
 
   if(flowHandle) {
-    flowLib.FlowDestroyHandle(flowHandle);
+    callFlowLib(flowLib.FlowDestroyHandle(flowHandle));
   }
 
   return tmpimg;
+}
+
+function createScript(path) {
+  var flowHandle = null;
+  var actions = [];
+
+  try {
+    flowHandle = flowLib.FlowCreateHandle(path, FlowProperties.ref());
+    var error = flowLib.FlowLastError();
+    if(error) {
+      console.log('Error', error);
+      throw new Error(error);
+    }
+    var nbFrames = callFlowLib(flowLib.FlowGetLength(flowHandle));
+    var nbMs = callFlowLib(flowLib.FlowGetLengthMs(flowHandle));
+
+    callFlowLib(flowLib.FlowRun(flowHandle, ffi.Callback('void', ['pointer', 'int'], function(flowHandle, frame_number) {
+      console.log(frame_number + " / " + nbFrames);
+    }), 120));
+
+    var frameRange = new FrameRangeStruct({
+      'fromFrame': 0,
+      'toFrame': nbFrames
+    });
+
+    flowLib.FlowCalcWave(flowHandle, frameRange, ffi.Callback('void', [ActionStructPtr, 'int', 'int', 'pointer'], function(actionsPtr, numberActions, is2, userData) {
+      const actionBuffer = actionsPtr.reinterpret(numberActions*ActionStruct.size);
+      
+      for(var i = 0; i < numberActions; i++) {
+        const action = ActionStruct.get(actionBuffer, i*ActionStruct.size)
+        const timeMs = Math.round(action.timeFrame / nbFrames * nbMs);
+        actions.push({
+          at: timeMs,
+          pos: action.actionPos
+        });
+      }
+
+    }), null);
+
+  } catch(e) {
+    console.log('error', e);
+  }
+
+  if(flowHandle) {
+    callFlowLib(flowLib.FlowDestroyHandle(flowHandle));
+  }
+
+  return actions;
+}
+
+async function modelHash(ipfs) {
+  const model = await fs.readFile('jtmodel.py');
+  const result = await ipfs.add(model);
+  return result.cid.toString();
 }
 
 function runApp(ipfs, db) {
@@ -78,8 +182,8 @@ function runApp(ipfs, db) {
   })
 
   app.get('/flow/*', (req, res) => {
-    var path = req.originalUrl.substring(6);
-    var pts = path.split('/');
+    var inputPath = req.originalUrl.substring(6);
+    var pts = inputPath.split('/');
 
     console.log(pts);
     
@@ -93,16 +197,21 @@ function runApp(ipfs, db) {
 
     if(protocol == 'file') {
       var disk = pts.shift();
-      // var path = disk + ':/' + decodeURIComponent(pts.join('/'));
-      var path = '/' + disk + '/' + decodeURIComponent(pts.join('/'));
-      if(!fs.existsSync(path)) {
+
+      if(process.platform === "win32") {
+        inputPath = disk + ':/' + decodeURIComponent(pts.join('/'));
+      } else {
+        inputPath = '/' + disk + '/' + decodeURIComponent(pts.join('/'));
+      }
+
+      if(!fs.existsSync(inputPath)) {
         res.sendStatus(404);
-        console.log(path + ' does not exist');
+        console.log(inputPath + ' does not exist');
         return;
       }
     }
     else if(protocol == 'http' || protocol == 'https') {
-      path = protocol + '://' + pts.join('/');
+      inputPath = protocol + '://' + pts.join('/');
       //Todo, check url
     } else {
       res.sendStatus(404);
@@ -110,34 +219,111 @@ function runApp(ipfs, db) {
       return;
     }
 
-    (async function() {
-      var hash = await db.get(path);
+    const flow = createFlow(inputPath);
 
-      if(!hash) {
-        const flow = createFlow(path);
-        if(!flow) {
-          res.sendStatus(500);
-          return;
-        }
+    // var fileName = inputPath.parse(path).name + '.png';
+    // res.setHeader('Content-Disposition', 'attachment; filename=' + fileName);
+    res.sendFile(flow);
 
+    // (async function() {
+    //   var hash = await db.get(path);
 
-        const buffer = fs.readFileSync(flow)
-        const result = await ipfs.add(buffer)
-        hash = result.cid.toString();
-        db.set(path, hash);
-      }
+    //   if(!hash) {
+    //     const flow = createFlow(path);
+    //     if(!flow) {
+    //       res.sendStatus(500);
+    //       return;
+    //     }
 
-      res.setHeader('Content-Type', 'image/png');
-      res.setHeader('Transfer-Encoding', 'chunked');
+    //     const buffer = fs.readFileSync(flow)
+    //     const result = await ipfs.add(buffer)
+    //     hash = result.cid.toString();
+    //     db.set(path, hash);
+    //   }
 
+    //   res.setHeader('Content-Type', 'image/png');
+    //   res.setHeader('Transfer-Encoding', 'chunked');
       
-      for await (const chunk of ipfs.cat(hash)) {
-        res.write(chunk);
+    //   for await (const chunk of ipfs.cat(hash)) {
+    //     res.write(chunk);
+    //   }
+    //   res.end();
+
+    // })();
+  })
+
+  app.get('/script/*', (req, res) => {
+    var inputPath = req.originalUrl.substring(8);
+    var pts = inputPath.split('/');
+
+    console.log(pts);
+    
+    if(pts.length < 3) {
+      res.sendStatus(404);
+      console.log('Too short');
+      return;
+    }
+
+    var protocol = pts.shift();
+
+    if(protocol == 'file') {
+      var inputPath = null;
+      var disk = pts.shift();
+
+      if(process.platform === "win32") {
+        inputPath = disk + ':/' + decodeURIComponent(pts.join('/'));
+      } else {
+        inputPath = '/' + disk + '/' + decodeURIComponent(pts.join('/'));
       }
-      res.end();
 
-    })();
+      if(!fs.existsSync(inputPath)) {
+        res.sendStatus(404);
+        console.log(inputPath + ' does not exist');
+        return;
+      }
+    }
+    else if(protocol == 'http' || protocol == 'https') {
+      inputPath = protocol + '://' + pts.join('/');
+      //Todo, check url
+    } else {
+      res.sendStatus(404);
+      console.log(protocol + ' is not supported');
+      return;
+    }
 
+    const actions = createScript(inputPath);
+    
+    var fileExt = path.extname(inputPath);
+    var fileName = path.basename(inputPath, fileExt) + '.funscript';
+    res.setHeader('Content-Disposition', 'attachment; filename=' + fileName);
+
+    res.json({actions})
+
+    // (async function() {
+    //   var hash = await db.get(path);
+
+    //   if(!hash) {
+    //     const flow = createFlow(path);
+    //     if(!flow) {
+    //       res.sendStatus(500);
+    //       return;
+    //     }
+
+    //     const buffer = fs.readFileSync(flow)
+    //     const result = await ipfs.add(buffer)
+    //     hash = result.cid.toString();
+    //     db.set(path, hash);
+    //   }
+
+    //   res.setHeader('Content-Type', 'image/png');
+    //   res.setHeader('Transfer-Encoding', 'chunked');
+      
+    //   for await (const chunk of ipfs.cat(hash)) {
+    //     res.write(chunk);
+    //   }
+    //   res.end();
+
+    // })();
   })
 
   app.listen(port, () => {
@@ -145,11 +331,9 @@ function runApp(ipfs, db) {
   })
 }
 
-
-
 (async function() {
-  const ipfs = await IPFS.create({ repo : './ipfs3' })
-  const orbitdb = await OrbitDB.createInstance(ipfs)
+  const ipfs = await IPFS.create({ repo : './ipfs' })
+  const orbitdb = await OrbitDB.createInstance(ipfs, {directory: './ipfs/orbitdb'})
 
   // Create / Open a database
   const db = await orbitdb.keyvalue('flowcache')

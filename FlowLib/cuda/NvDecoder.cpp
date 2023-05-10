@@ -16,8 +16,8 @@
 
 #include "NvDecoder.h"
 
-#include "nvcuvid.h"
-#include "driver_types.h"
+// #include "nvcuvid.h"
+// #include "driver_types.h"
 #include "nv12_to_rgb.h"
 
 #define START_TIMER auto start = std::chrono::high_resolution_clock::now();

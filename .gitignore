@@ -8,3 +8,4 @@ out
 Server/node_modules
 Server/ipfs*
 Server/orbitdb
+__pycache__

@@ -12,8 +12,10 @@
 #include <opencv2/cudaoptflow.hpp>
 #include <opencv2/cudawarping.hpp>
 
+#include <thread>
 #include <algorithm>
-#include <format>
+#include <condition_variable>
+// #include <format>
 
 using namespace std;
 using namespace cv;
@@ -29,7 +31,7 @@ struct Job {
 };
 
 #define NUM_POOLS 360/2
-#define MAGNITUTE_THRESH 0.1f
+#define MAGNITUTE_THRESH 0.01f
 
 class Runner : public FlowLibShared {
 public:
@@ -82,9 +84,9 @@ public:
         // reader_thread.join();
     }
 
-    void ReadThread(RunCallback callback)
+    void ReadThread(RunCallback callback, int callbackInterval)
     {
-        string message = std::format("[FlowLib] ReadThread start, frames {}", numFrames);
+        string message = cv::format("[FlowLib] ReadThread start, frames %ld", numFrames);
         MY_LOG(message.c_str());
 
         int nVideoBytes = 0;
@@ -109,7 +111,7 @@ public:
             demuxer.SeekFrame(startPosition);
             lastGpuFrame = cuda::GpuMat();
 
-            string message = std::format("[FlowLib] reading from frame {}", frame_position);
+            string message = cv::format("[FlowLib] reading from frame %ld", frame_position);
             MY_LOG(message.c_str());
 
             while(running)
@@ -117,7 +119,7 @@ public:
                 bool demuxed = demuxer.Demux(&pVideo, &nVideoBytes, &pts, &frameNr);
 
                 if(!demuxed) {
-                    string message = std::format("[FlowLib] demux end at {}", frame_position);
+                    string message = cv::format("[FlowLib] demux end at %ld", frame_position);
                     MY_LOG(message.c_str());
                     break;
                 }
@@ -136,7 +138,7 @@ public:
 
                     while(dec->NumFrames() > 0) {
                         if(!QueueFrame(dec->GetFrame())) {
-                            string message = std::format("[FlowLib] queue error at frame {}", frame_position);
+                            string message = cv::format("[FlowLib] queue error at frame %ld", frame_position);
                             MY_LOG(message.c_str());
                             isReading = false;
                             return;
@@ -145,7 +147,7 @@ public:
                         frame_position++;
                     }
 
-                    if(callback) {
+                    if(callback && frame_position % callbackInterval == 0 && frame_position > 0) {
                         callback((FlowLibShared*)this, frame_position);
                     }
                 }
@@ -154,7 +156,7 @@ public:
             }
 
             if(frame_position == startPosition) {
-                message = std::format("[FlowLib] reading died at {}", frame_position);
+                message = cv::format("[FlowLib] reading died at %ld", frame_position);
                 MY_LOG(message.c_str());
                 isReading = false;
                 return;
@@ -164,7 +166,7 @@ public:
             
             for(FrameNumber f=0; f<isFrameProcessed.size(); f++) {
                 if(isFrameProcessed.at(f) == false) {
-                    message = std::format("[FlowLib] frame {} not done, looping (stopped at {})", f, frame_position);
+                    message = cv::format("[FlowLib] frame %ld not done, looping (stopped at %ld)", f, frame_position);
                     MY_LOG(message.c_str());
 
                     allDone = false;
@@ -221,7 +223,7 @@ public:
 
         cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> flow = cuda::NvidiaOpticalFlow_2_0::create(
             video_size,
-            cv::cuda::NvidiaOpticalFlow_2_0::NV_OF_PERF_LEVEL_FAST
+            cv::cuda::NvidiaOpticalFlow_2_0::NV_OF_PERF_LEVEL_SLOW
         );
 
         Size flowSize = video_size / flow->getGridSize();
@@ -246,44 +248,20 @@ public:
             
             flow->calc(job.nextFrame, job.lastFrame, flow_frame);
             runMatPool(flow_frame, job.out, NUM_POOLS, MAGNITUTE_THRESH);
+        }
+        
+        MY_LOG("[FlowLib] TrackThread finishing up");
+        tracker_thread_waiting = true;
 
-/*
-            cuda::GpuMat flow_frame_float;
-            flow_frame.convertTo(flow_frame_float, CV_32FC2);
-            cuda::GpuMat flow_mag;
-            cuda::GpuMat flow_angle;
-
-            cuda::GpuMat flow_pts[2];
-            cuda::split(flow_frame_float, flow_pts);
-            cuda::cartToPolar(flow_pts[0], flow_pts[1], flow_mag, flow_angle, true);
-
-            string outPath = "C:\\dev\\JackerTracker\\FlowLib\\build\\case2\\";
+        while (!jobs.empty()) {
+            job = jobs.front();
+            jobs.pop_front();
             
-            // imwrite flow_angle to the subfolder flowangle inside outPath, the filename should be job.frameNumer padded by zeroes plus .png
-            // imwrite flow_mag to the subfolder flowmag inside outPath, the filename should be job.frameNumer padded by zeroes plus .png
-            
-            cuda::GpuMat flow_angle_out;
-            cuda::GpuMat flow_mag_out;
-            cuda::divide(flow_angle, 2, flow_angle_out);
-            cuda::divide(flow_mag, 2, flow_mag_out);
-
-            string flowAnglePath = outPath + "flowangle\\" + std::format("{:05d}.png", job.frameNumber);
-            string flowMagPath = outPath + "flowmag\\" + std::format("{:05d}.png", job.frameNumber);
-
-            Mat flow_angle_out_mat;
-            Mat flow_mag_out_mat;
-            flow_angle_out.download(flow_angle_out_mat);
-            flow_mag_out.download(flow_mag_out_mat);
-
-            imwrite(flowAnglePath, flow_angle_out_mat);
-            imwrite(flowMagPath, flow_mag_out_mat);
-            */
-
-            
+            flow->calc(job.nextFrame, job.lastFrame, flow_frame);
+            runMatPool(flow_frame, job.out, NUM_POOLS, MAGNITUTE_THRESH);
         }
 
         MY_LOG("[FlowLib] TrackThread end");
-        tracker_thread_waiting = true;
     }
 
     cuda::GpuMat PrepareFrame(FrameRange range)
@@ -336,7 +314,6 @@ public:
     {
         config.numberOfPools = NUM_POOLS;
         
-
         bool needsQueue = false;
         
         if(frame_position >= range.fromFrame && frame_position <= range.toFrame) {
@@ -420,11 +397,11 @@ public:
         return ret;
     }
 
-    void Run(RunCallback callback)
+    void Run(RunCallback callback, int callbackInterval)
     {
         tracker_thread = thread(&Runner::TrackThread, this);
 
-        ReadThread(callback);
+        ReadThread(callback, callbackInterval);
 
         running = false;
         while(!tracker_thread_waiting){;}
@@ -451,11 +428,12 @@ public:
     cv::Mat GetMat()
     {
         cv::Mat buf;
+
         out.download(buf);
         
-        rotate(buf, buf, ROTATE_90_COUNTERCLOCKWISE);
+        // rotate(buf, buf, ROTATE_90_COUNTERCLOCKWISE);
         // float maxVal = video_size.width * video_size.height * ;
-        buf.convertTo(buf, CV_32FC1, config.maxValue);
+        // buf.convertTo(buf, CV_32FC1, config.maxValue);
         
         return buf;
     }

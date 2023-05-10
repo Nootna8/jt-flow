@@ -14,9 +14,16 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
 #include <libavcodec/avcodec.h>
-#include <libavcodec/bsf.h>
+
+// Docker version
+#if LIBAVFORMAT_VERSION_MINOR != 29
+    #include <libavcodec/bsf.h>
+#endif
+
 }
 #include "opencv2/core/utils/logger.hpp"
+
+#include <stdexcept>
 
 
 inline bool check(int e, int iLine, const char *szFile) {
@@ -72,8 +79,8 @@ private:
     */
     FFmpegDemuxer(AVFormatContext *fmtc, int64_t timeScale = 1000 /*Hz*/) : fmtc(fmtc) {
         if (!fmtc) {
-            CV_LOG_ERROR(NULL, "No AVFormatContext provided.");
-            return;
+            // CV_LOG_ERROR(NULL, "No AVFormatContext provided.");
+            throw std::runtime_error("No AVFormatContext provided.");
         }
 
         CV_LOG_INFO(NULL, "Media format: " << fmtc->iformat->long_name << " (" << fmtc->iformat->name << ")");
