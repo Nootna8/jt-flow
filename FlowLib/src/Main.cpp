@@ -27,6 +27,9 @@ int main(int argc, char* argv[])
 
         FlowHandle handle = FlowCreateHandle(argv[1], &properties);
 
+        std::cout << "Length frames: " << FlowGetLength(handle) << "\n";
+        std::cout << "Length ms: " << FlowGetLengthMs(handle) << "\n";
+
         clock_t start = clock();
         FlowRun(handle, [](FlowHandle handle, int frame_number) {
             FrameNumber length = FlowGetLength(handle);

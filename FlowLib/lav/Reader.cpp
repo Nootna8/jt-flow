@@ -1,4 +1,5 @@
 #include "Reader.hpp"
+#include "SharedReader.hpp"
 
 extern "C" {
 #include <libavutil/error.h>
@@ -10,6 +11,8 @@ extern "C" {
 
 #include <string>
 #include <stdexcept>
+#include <map>
+#include <cmath>
 
 #ifdef av_err2str
 #undef av_err2str
@@ -51,15 +54,12 @@ public:
 
     int GetNumFrames()
     {
-        return video_stream_1->nb_frames;
+        return streamProgram.GetLengthFrames();
     }
 
     int GetNumMs()
     {
-        double time_base = (double)video_stream_1->time_base.num / (double)video_stream_1->time_base.den;
-        unsigned long duration = (double)video_stream_1->duration * time_base * 1000.0;
-        
-        return duration;
+        return streamProgram.GetLengthMs();
     }
 
     int CurrentFrame()
@@ -81,8 +81,9 @@ protected:
     HandleFrameCallback callback;
     int frame_number = 0;
 
+    StreamProgram streamProgram;
     AVFormatContext *fmt_ctx = NULL;
-    int video_stream_idx = -1;
+    // int video_stream_idx = -1;
 
     // Decoder 1
     AVDictionary* opts_1 = NULL;
@@ -94,7 +95,7 @@ protected:
     AVCodec* dec_1 = NULL;
 #endif
 
-    AVStream *video_stream_1 = NULL;
+    // AVStream *video_stream_1 = NULL;
     AVFrame *frame_1 = NULL;
     AVPacket* pkt_dec_1 = NULL;
 
@@ -162,23 +163,29 @@ void MyReader::init_decoder_1(const char* src_filename)
 		throw std::runtime_error("Could not find stream information");
 	}
 
-	//av_dump_format(fmt_ctx, 0, src_filename, 0);
+    av_dump_format(fmt_ctx, 0, src_filename, 0);
 
-    video_stream_idx = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &dec_1, 0);
-	if (video_stream_idx < 0) {
+    streamProgram = GetStreamProgram(fmt_ctx);
+
+	if (streamProgram.videoStream == nullptr) {
         throw std::runtime_error("Could not find stream");
 	}
 
+    dec_1 = avcodec_find_decoder(streamProgram.videoStream->codecpar->codec_id);
+    if (!dec_1) {
+        throw std::runtime_error("Could not find stream decoder");
+    }
+
     // dec_1 = avcodec_find_decoder_by_name("h264_cuvid");
 
-    video_stream_1 = fmt_ctx->streams[video_stream_idx];
+    // video_stream_1 = fmt_ctx->streams[video_stream_idx];
 
     dec_ctx_1 = avcodec_alloc_context3(dec_1);
     if (!dec_ctx_1) {
         throw std::runtime_error("Could not allocate a decoding context");
     }
 
-    ret = avcodec_parameters_to_context(dec_ctx_1, video_stream_1->codecpar);
+    ret = avcodec_parameters_to_context(dec_ctx_1, streamProgram.videoStream->codecpar);
     if (ret < 0) {
         throw std::runtime_error("Could not copy codec parameters to decoder context");
     }
@@ -225,7 +232,7 @@ void MyReader::init_encoder_2()
 
     enc_ctx_2->time_base = {1, 25};
     enc_ctx_2->framerate = {25, 1};
-    enc_ctx_2->framerate = video_stream_1->avg_frame_rate;
+    enc_ctx_2->framerate = streamProgram.videoStream->avg_frame_rate;
 
     enc_ctx_2->max_b_frames = 0;
     enc_ctx_2->gop_size = 100000;
@@ -282,7 +289,7 @@ void MyReader::decode_loop_1()
     int ret = 0;
 
     while (av_read_frame(fmt_ctx, pkt_dec_1) >= 0 && running) {
-		if (pkt_dec_1->stream_index != video_stream_idx) {
+		if (pkt_dec_1->stream_index != streamProgram.videoStream->index) {
             av_packet_unref(pkt_dec_1);
             continue;
         }

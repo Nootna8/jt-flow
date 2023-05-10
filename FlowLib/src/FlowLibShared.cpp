@@ -13,8 +13,8 @@ std::string lastError;
 
 int loadarr()
 {
-    if(PyArray_API == NULL) {
-        import_array1(-1);
+   if(PyArray_API == NULL) {
+       import_array1(-1);
     }
     return 0;
 }
@@ -28,7 +28,7 @@ public:
         PyRun_SimpleString("import sys");
         PyObject *sys_path = PySys_GetObject("path");
         PyList_Append(sys_path, PyUnicode_FromString("."));
-        // PyList_Append(sys_path, PyUnicode_FromString("/usr/local/src/model"));
+        PyList_Append(sys_path, PyUnicode_FromString("/usr/local/src/model"));
     }
 
     ~ResourceHolder() {
@@ -193,11 +193,6 @@ bool FlowSetLogger(LoggingCallback callback)
 
 bool FlowSave(FlowHandle handlePtr, const char* path)
 {
-    // FlowLibShared* handle = (FlowLibShared*)handlePtr;
-    // cv::Mat oMat = handle->GetMat();
-    // cv::imwrite(path, oMat);
-    // return true;
-
     PyObject* m_PyModule = NULL;
     PyObject* processFunc = NULL;
     PyObject* pyMat = NULL;

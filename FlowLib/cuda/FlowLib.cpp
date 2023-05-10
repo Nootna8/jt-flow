@@ -108,7 +108,7 @@ public:
 
             frame_seek = 0;
             frame_position = startPosition;
-            demuxer.SeekFrame(startPosition);
+            // demuxer.SeekFrame(startPosition);
             lastGpuFrame = cuda::GpuMat();
 
             string message = cv::format("[FlowLib] reading from frame %ld", frame_position);

@@ -22,6 +22,7 @@ extern "C" {
 
 }
 #include "opencv2/core/utils/logger.hpp"
+#include "SharedReader.hpp"
 
 #include <stdexcept>
 
@@ -52,7 +53,7 @@ private:
     AVPacket pkt, pktFiltered; /*!< AVPacket stores compressed data typically exported by demuxers and then passed as input to decoders */
     AVBSFContext *bsfc = NULL;
 
-    int iVideoStream;
+    
     bool bMp4H264, bMp4HEVC, bMp4MPEG4;
     AVCodecID eVideoCodec;
     AVPixelFormat eChromaFormat;
@@ -63,6 +64,7 @@ private:
     uint8_t *pDataWithHeader = NULL;
 
     int64_t frameCount = 0;
+    StreamProgram streamProgram;
 
 public:
     class DataProvider {
@@ -85,19 +87,20 @@ private:
 
         CV_LOG_INFO(NULL, "Media format: " << fmtc->iformat->long_name << " (" << fmtc->iformat->name << ")");
 
+        
         ck(avformat_find_stream_info(fmtc, NULL));
-        iVideoStream = av_find_best_stream(fmtc, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
-        if (iVideoStream < 0) {
+        streamProgram = GetStreamProgram(fmtc);
+
+        if (streamProgram.videoStream == nullptr) {
             CV_LOG_ERROR(NULL, "FFmpeg error: " << __FILE__ << " " << __LINE__ << " " << "Could not find stream in input file");
             return;
         }
 
-        //fmtc->streams[iVideoStream]->need_parsing = AVSTREAM_PARSE_NONE;
-        eVideoCodec = fmtc->streams[iVideoStream]->codecpar->codec_id;
-        nWidth = fmtc->streams[iVideoStream]->codecpar->width;
-        nHeight = fmtc->streams[iVideoStream]->codecpar->height;
-        eChromaFormat = (AVPixelFormat)fmtc->streams[iVideoStream]->codecpar->format;
-        AVRational rTimeBase = fmtc->streams[iVideoStream]->time_base;
+        eVideoCodec = streamProgram.videoStream->codecpar->codec_id;
+        nWidth = streamProgram.videoStream->codecpar->width;
+        nHeight = streamProgram.videoStream->codecpar->height;
+        eChromaFormat = (AVPixelFormat)streamProgram.videoStream->codecpar->format;
+        AVRational rTimeBase = streamProgram.videoStream->time_base;
         timeBase = av_q2d(rTimeBase);
         userTimeScale = timeScale;
 
@@ -180,7 +183,7 @@ private:
                 return;
             }
             ck(av_bsf_alloc(bsf, &bsfc));
-            avcodec_parameters_copy(bsfc->par_in, fmtc->streams[iVideoStream]->codecpar);
+            avcodec_parameters_copy(bsfc->par_in, streamProgram.videoStream->codecpar);
             ck(av_bsf_init(bsfc));
         }
         if (bMp4HEVC) {
@@ -190,7 +193,7 @@ private:
                 return;
             }
             ck(av_bsf_alloc(bsf, &bsfc));
-            avcodec_parameters_copy(bsfc->par_in, fmtc->streams[iVideoStream]->codecpar);
+            avcodec_parameters_copy(bsfc->par_in, streamProgram.videoStream->codecpar);
             ck(av_bsf_init(bsfc));
         }
     }
@@ -254,7 +257,7 @@ public:
     }
     bool SeekFrame(int64_t frameNr) {
         //int ret = av_seek_frame(fmtc, iVideoStream, pts, flags);
-        int ret = avformat_seek_file(fmtc, iVideoStream, 0, frameNr, frameNr, AVSEEK_FLAG_FRAME);
+        int ret = avformat_seek_file(fmtc, streamProgram.videoStream->index, 0, frameNr, frameNr, AVSEEK_FLAG_FRAME);
         //int ret = avformat_seek_file(fmtc, iVideoStream, pts, pts, pts, AVSEEK_FLAG_BACKWARD);
         if (ret < 0)
         {
@@ -279,26 +282,20 @@ public:
         
         int64_t frameNr = av_rescale(
             ptsMs,
-            fmtc->streams[iVideoStream]->time_base.den,
-            fmtc->streams[iVideoStream]->time_base.num
+            streamProgram.videoStream->time_base.den,
+            streamProgram.videoStream->time_base.num
         )/1000;
 
         return SeekFrame(frameNr);
     }
     int64_t GetDuration()
     {
-        auto& vs = fmtc->streams[iVideoStream];
-
-        double time_base = (double)vs->time_base.num / (double)vs->time_base.den;
-        unsigned long duration = (double)vs->duration * time_base * 1000.0;
-
-        return duration;
+        return streamProgram.GetLengthMs();
     }
 
     int64_t GetNumFrames()
     {
-        auto& vs = fmtc->streams[iVideoStream];
-        return vs->nb_frames;
+        return streamProgram.GetLengthFrames();
     }
 
     bool Demux(uint8_t **ppVideo, int *pnVideoBytes, int64_t *pts = NULL, int64_t *frameNum = NULL) {
@@ -313,7 +310,7 @@ public:
         }
 
         int e = 0;
-        while ((e = av_read_frame(fmtc, &pkt)) >= 0 && pkt.stream_index != iVideoStream) {
+        while ((e = av_read_frame(fmtc, &pkt)) >= 0 && pkt.stream_index != streamProgram.videoStream->index) {
             av_packet_unref(&pkt);
         }
         if (e < 0) {
@@ -337,7 +334,7 @@ public:
 
             if (bMp4MPEG4 && (frameCount == 0)) {
 
-                int extraDataSize = fmtc->streams[iVideoStream]->codecpar->extradata_size;
+                int extraDataSize = streamProgram.videoStream->codecpar->extradata_size;
 
                 if (extraDataSize > 0) {
 
@@ -349,7 +346,7 @@ public:
                         return false;
                     }
 
-                    memcpy(pDataWithHeader, fmtc->streams[iVideoStream]->codecpar->extradata, extraDataSize);
+                    memcpy(pDataWithHeader, streamProgram.videoStream->codecpar->extradata, extraDataSize);
                     memcpy(pDataWithHeader+extraDataSize, pkt.data+3, pkt.size - 3*sizeof(uint8_t));
 
                     *ppVideo = pDataWithHeader;
