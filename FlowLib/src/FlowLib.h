@@ -37,7 +37,7 @@ FLOWLIB_API bool FlowRun(FlowHandle handle, FlowRunCallback callback, int callba
 
 FLOWLIB_API FrameNumber FlowGetLength(FlowHandle handle);
 FLOWLIB_API FrameNumber FlowGetLengthMs(FlowHandle handle);
-FLOWLIB_API bool FlowDrawRange(FlowHandle handle, FrameRange range, DrawCallback callback, void* userData);
+FLOWLIB_API bool FlowGetData(FlowHandle handle, FrameRange range, void* buffer);
 FLOWLIB_API bool FlowCalcWave(FlowHandle handle, FrameRange range, DrawCallback callback, void* userData);
 FLOWLIB_API float FlowProgress(FlowHandle handle);
 FLOWLIB_API bool FlowSave(FlowHandle handle, const char* path);

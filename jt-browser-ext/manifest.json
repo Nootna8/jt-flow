@@ -1,0 +1,27 @@
+{
+    "manifest_version": 3,
+    "name": "JT Flow browser extention",
+    "version": "1.0.0",
+    "action": { "default_popup": "index.html" },
+    "background": {
+        "service_worker": "src/background.js",
+        "type": "module"
+    },
+    "content_scripts": [
+        {
+          "matches": [
+            "https://spankbang.com/*/video/*",
+            "https://www.pornhub.com/view_video.php?viewkey=*"
+          ],
+          "run_at": "document_idle",
+          "js": ["src/video.js"]
+        }
+    ],
+    "permissions": [
+        "webRequest"
+    ],
+    "web_accessible_resources": [{
+        "resources": ["src/ph_hook.js"],
+        "matches": ["<all_urls>"]
+    }]
+}

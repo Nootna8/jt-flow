@@ -6,14 +6,15 @@ services:
       context: "."
       dockerfile: "Dockerfile"
     environment:
-      - FLOWLIB=/app/FlowLib/build/libJTFlowLav
-      # - FLOWLIB=/app/FlowLib/build/libJTFlowCuda
+      # - FLOWLIB=/app/FlowLib/build/libJTFlowLav
+      - FLOWLIB=/app/FlowLib/build/libJTFlowCuda
     container_name: jt-flow
     restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
       - "./videos:/videos"
+      # - "/c/Users/Electromuis/Downloads/tmp:/videos"
       - "./Server/index.mjs:/app/Server/index.mjs"
       - "/app/Server/ipfs"
       - "./Model:/app/Model"
@@ -22,10 +23,10 @@ services:
     # stdin_open: true # docker run -i
     # tty: true        # docker run -t
 
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

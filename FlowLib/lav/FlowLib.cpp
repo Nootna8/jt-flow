@@ -30,13 +30,10 @@ public:
         } catch (std::exception& e) {
             printf("OpenCL not available: %s\n", e.what());
         }
-        // printf(".");
 
         flowOutput = cv::UMat(reader->GetNumFrames(), FLOW_HEIGHT, CV_32SC1, cv::ACCESS_WRITE, cv::USAGE_ALLOCATE_DEVICE_MEMORY);
         cv::Mat flowOutputZero = cv::Mat(reader->GetNumFrames(), FLOW_HEIGHT, CV_32SC1, cv::Scalar(0, 0, 0));
         flowOutputZero.copyTo(flowOutput);
-
-        // flowOutput = cv::Mat(reader->GetNumFrames(), FLOW_HEIGHT, CV_32SC1, cv::Scalar(0, 0, 0));
     }
 
     FrameNumber CurrentFrame()
@@ -54,12 +51,10 @@ public:
         return reader->GetNumMs();
     }
 
-    cv::Mat GetMat()
+    bool GetMat(FrameRange range, cv::Mat& buffer)
     {
-        cv::Mat buf;
-        flowOutput.copyTo(buf);
-        return buf;
-        // return flowOutput;
+        flowOutput.rowRange(range.fromFrame, range.toFrame).copyTo(buffer);
+        return true;
     }
 
     void Run(RunCallback cb, int callbackInterval)

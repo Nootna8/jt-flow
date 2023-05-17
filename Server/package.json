@@ -4,21 +4,38 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "cross-env OPENCV_BIN_DIR=C:/dev/JackerTracker/lib/opencv/Build/bin/Release nodemon src/index.mjs",
+    "star": "webrtc-star --port=13579 --host=127.0.0.1"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@chainsafe/libp2p-gossipsub": "^7.0.0",
+    "@libp2p/webrtc": "^1.2.0",
+    "@libp2p/webrtc-direct": "^6.0.0",
+    "@libp2p/webrtc-star": "^7.0.0",
+    "@multiformats/multiaddr": "^12.1.3",
+    "@u4/opencv4nodejs": "^6.5.1",
     "bmp-js": "^0.1.0",
-    "express": "^4.18.2",
+    "cross-env": "^7.0.3",
+    "express": "^5.0.0-beta.1",
     "ffi-napi": "^4.0.3",
     "ipfs": "^0.66.0",
+    "ipfs-http-gateway": "^0.13.0",
+    "node-ffprobe": "^3.0.0",
     "nodemon": "^2.0.22",
     "orbit-db": "^0.29.0",
     "ref-array-di": "^1.2.2",
     "ref-napi": "^3.0.3",
     "ref-struct-di": "^1.1.1",
     "stream": "^0.0.2",
-    "tempfile": "^5.0.0"
+    "tempfile": "^5.0.0",
+    "uint8arrays": "^4.0.3",
+    "wrtc": "^0.4.7",
+    "ws": "^8.13.0"
+  },
+  "opencv4nodejs": {
+    "disableAutoBuild": "1"
   }
 }

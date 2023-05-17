@@ -5,6 +5,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <stdexcept>
 #include <string>
+#include <chrono>
 #include <Python.h>
 #include "numpy/arrayobject.h"
 
@@ -100,10 +101,19 @@ FrameNumber FlowGetLengthMs(FlowHandle handlePtr)
     }
 }
 
-bool FlowDrawRange(FlowHandle handlePtr, FrameRange range, DrawCallback callback, void* userData)
+bool FlowGetData(FlowHandle handlePtr, FrameRange range, void* buffer)
 {
-    // Runner* runner = (Runner*)handle;
-    // runner->FlowDrawRange(range, callback, userData);'
+    try {
+        FlowLibShared* handle = (FlowLibShared*)handlePtr;
+        cv::Mat bufferMat = cv::Mat(range.toFrame - range.fromFrame, 180, CV_32SC1, buffer);
+        return handle->GetMat(range, bufferMat);
+    }
+    catch (std::exception& e) {
+        lastError = e.what();
+        MY_LOG(cv::format("[FlowLib] draw range failed: %s", e.what()).c_str());
+        return false;
+    }
+
     return true;
 }
 
@@ -118,7 +128,8 @@ bool FlowCalcWave(FlowHandle handlePtr, FrameRange range, DrawCallback callback,
 
     try {
         FlowLibShared* handle = (FlowLibShared*)handlePtr;
-        cv::Mat mat = handle->GetMat();
+        cv::Mat mat;
+        handle->GetMat(FrameRange{ range.fromFrame, range.toFrame }, mat);
 
         if(range.fromFrame < 0 || range.toFrame > mat.rows) {
             throw std::runtime_error("Invalid range");
@@ -202,7 +213,11 @@ bool FlowSave(FlowHandle handlePtr, const char* path)
 
     try {
         FlowLibShared* handle = (FlowLibShared*)handlePtr;
-        cv::Mat oMat = handle->GetMat();
+        cv::Mat oMat;
+        handle->GetMat(FrameRange{ 0, handle->GetNumFrames() }, oMat);
+        cv::imwrite(path, oMat);
+        return true;
+        
         cv::Mat mat = oMat.clone();
         cv::Mat outputMat;
         
@@ -271,8 +286,15 @@ float FlowProgress(FlowHandle handlePtr)
 bool FlowRun(FlowHandle handlePtr, FlowRunCallback callback, int callbackInterval)
 {
     try {
+        clock_t start = std::clock();
+        
         FlowLibShared* handle = (FlowLibShared*)handlePtr;
         handle->Run(callback, callbackInterval);
+        
+        clock_t end = std::clock();
+        double elapsed_time = (double)(end - start) / CLOCKS_PER_SEC;
+	    MY_LOG(cv::format("Elapsed time: %f seconds\n", elapsed_time).c_str());
+        
         return true;
     } catch (std::exception& e) {
         lastError = e.what();

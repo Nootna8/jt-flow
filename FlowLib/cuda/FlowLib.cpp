@@ -84,7 +84,7 @@ public:
         // reader_thread.join();
     }
 
-    void ReadThread(RunCallback callback, int callbackInterval)
+    void ReadThread()
     {
         string message = cv::format("[FlowLib] ReadThread start, frames %ld", numFrames);
         MY_LOG(message.c_str());
@@ -145,10 +145,6 @@ public:
                         }
 
                         frame_position++;
-                    }
-
-                    if(callback && frame_position % callbackInterval == 0 && frame_position > 0) {
-                        callback((FlowLibShared*)this, frame_position);
                     }
                 }
 
@@ -219,6 +215,8 @@ public:
 
     void TrackThread()
     {
+        isTracking = true;
+
         MY_LOG("[FlowLib] TrackThread start");
 
         cv::Ptr<cv::cuda::NvidiaOpticalFlow_2_0> flow = cuda::NvidiaOpticalFlow_2_0::create(
@@ -248,171 +246,83 @@ public:
             
             flow->calc(job.nextFrame, job.lastFrame, flow_frame);
             runMatPool(flow_frame, job.out, NUM_POOLS, MAGNITUTE_THRESH);
+            last_frame_done = job.frameNumber;
         }
-        
-        MY_LOG("[FlowLib] TrackThread finishing up");
-        tracker_thread_waiting = true;
 
-        while (!jobs.empty()) {
+        MY_LOG("[FlowLib] Finishing up");
+
+        while(!jobs.empty()) {
             job = jobs.front();
             jobs.pop_front();
             
             flow->calc(job.nextFrame, job.lastFrame, flow_frame);
             runMatPool(flow_frame, job.out, NUM_POOLS, MAGNITUTE_THRESH);
+            last_frame_done = job.frameNumber;
         }
+        
+        tracker_thread_waiting = true;
 
         MY_LOG("[FlowLib] TrackThread end");
-    }
 
-    cuda::GpuMat PrepareFrame(FrameRange range)
-    {
-        config.numberOfPools = NUM_POOLS;
-
-        // Create a pointer to the data frames we want
-        FrameNumber numDrawFrames = range.toFrame - range.fromFrame;
-        cuda::GpuMat outCopy(numDrawFrames, config.numberOfPools, CV_32S);
-        outCopy.setTo({0});
-        cuda::GpuMat outPtr = out.rowRange(range.fromFrame, range.toFrame);
-        outPtr.copyTo(outCopy);
-
-        // Normallize the values to 0 and 1
-        float maxVal = video_size.width * video_size.height * config.maxValue;
-        cuda::threshold(outCopy, outCopy, maxVal, 0, THRESH_TRUNC);
-        cuda::GpuMat outCopyNormed(numDrawFrames, config.numberOfPools, CV_32FC1);
-        cuda::normalize(outCopy, outCopyNormed, 0.0f, 1.0f, NORM_MINMAX, CV_32FC1);
-        outCopy = outCopyNormed;
-        
-        // Apply position mirror
-        if(config.overlayHalf) {
-            int poolsHalf = config.numberOfPools / 2;
-            cuda::GpuMat outCopyHalfed(numDrawFrames, poolsHalf, CV_32FC1);
-            outCopyHalfed.setTo({1.0f});
-
-            cuda::add(outCopyHalfed, outCopy.colRange(0, poolsHalf), outCopyHalfed);
-            cuda::subtract(outCopyHalfed, outCopy.colRange(poolsHalf, config.numberOfPools), outCopyHalfed);
-            outCopyHalfed.convertTo(outCopyHalfed, CV_32FC1, 0.5);
-
-            outCopy = outCopyHalfed;
-        }
-
-/*
-        if(config.rollOffset > 0) {
-            cuda::GpuMat outCopyTmp = outCopy.clone();
-
-            int offset = outCopy.cols / 2;
-            offset = max(0, offset, min(outCopy.cols, offset));
-            outCopy.colRange(0, offset).copyTo(outCopyTmp.colRange(offset, outCopyTmp.cols));
-            outCopy.colRange(offset, outCopyTmp.cols).copyTo(outCopyTmp.colRange(0, offset));
-            outCopy = outCopyTmp;
-        }
-*/
-
-        return outCopy;
-    }
-
-    void FlowDrawRange(FrameRange range, DrawCallback callback, void* userData)
-    {
-        config.numberOfPools = NUM_POOLS;
-        
-        bool needsQueue = false;
-        
-        if(frame_position >= range.fromFrame && frame_position <= range.toFrame) {
-            needsQueue = false;
-        } else {
-            for(FrameNumber f=range.fromFrame; f<range.toFrame; f++) {
-                if(isFrameProcessed.at(f) == false) {
-                    needsQueue = true;
-                    break;
-                }
-            }
-        }
-
-        if (needsQueue) {
-            //frame_seek = range.fromFrame;
-        }
-
-        
-        
-        // Apply re-pooling
-
-/*
-        int step = NUM_POOLS/config.numberOfPools;
-        for(int p=0; p<config.numberOfPools; p++) {
-            int fromPool = p*step;
-            int toPool = min(NUM_POOLS-1, fromPool+step);
-
-            cuda::reduce(outPtr.colRange(fromPool, toPool), outCopy.col(p), 1, REDUCE_SUM, CV_32S);
-        }
-        */
-
-        cuda::GpuMat outCopy = PrepareFrame(range);
-
-        drawBuffer = Mat(outCopy.rows, config.numberOfPools, CV_32FC1);
-        outCopy.download(drawBuffer);
-        rotate(drawBuffer, drawBuffer, ROTATE_90_COUNTERCLOCKWISE);
-
-        callback(drawBuffer.data, drawBuffer.cols, drawBuffer.rows, userData);
-    }
-
-    void CalcWave(FrameRange range, DrawCallback callback, void* userData)
-    {
-        cuda::GpuMat outCopy = PrepareFrame(range);
-        
-        int fromPool = (config.focusPoint - (config.focusSize / 2.0f)) * outCopy.cols;
-        fromPool = max(0, fromPool);
-
-        int toPool = (config.focusPoint + (config.focusSize / 2.0f)) * outCopy.cols;
-        toPool = min(outCopy.cols, toPool);
-
-        outCopy = outCopy.colRange(fromPool, toPool);
-        cuda::resize(outCopy, outCopy, Size(1, outCopy.rows));
-        outCopy.download(waveBuffer);
-        
-        rotate(waveBuffer, waveBuffer, ROTATE_90_COUNTERCLOCKWISE);
-        //if(config.waveSmoothing1 > 0) {
-        //    GaussianBlur(waveBuffer, waveBuffer, Size(0, 0), config.waveSmoothing1);
-        //}
-
-        callback(waveBuffer.data, waveBuffer.cols, waveBuffer.rows, userData);
-    }
-
-    float GetProgress()
-    {
-        // count the number of completed frames in isFrameProcessed and divide by numFrames, then return the result
-
-        int completedFrames = 0;
-        for(int i=0; i<isFrameProcessed.size(); i++) {
-            if(isFrameProcessed.at(i)) {
-                completedFrames++;
-            }
-        }
-
-        float ret = (float)completedFrames / (float)numFrames;
-        ret -= 0.01;
-
-        if(!isReading) {
-            ret = 1.0f;
-        }
-
-        return ret;
+        isTracking = false;
     }
 
     void Run(RunCallback callback, int callbackInterval)
     {
-        tracker_thread = thread(&Runner::TrackThread, this);
+        running = true;
+        last_frame_done = 0;
 
-        ReadThread(callback, callbackInterval);
+        tracker_thread = thread(&Runner::TrackThread, this);
+        reader_thread = thread(&Runner::ReadThread, this);
+        int callbackRuns = std::ceil(numFrames / callbackInterval);
+        int callbackRun = -1;
+
+        while(isReading) {
+            for(FrameNumber f=0; f<last_frame_done; f++) {
+                int myCallbackRun = std::floor(f / callbackInterval);
+                if(myCallbackRun <= callbackRun)
+                    continue;
+
+                FrameNumber toFrame = (myCallbackRun+1) * callbackInterval;
+                if(toFrame >= last_frame_done || toFrame >= numFrames)
+                    continue;
+
+                callback(this, toFrame);
+                callbackRun = myCallbackRun;
+            }
+
+            this_thread::sleep_for(chrono::milliseconds(500));
+        }
 
         running = false;
         while(!tracker_thread_waiting){;}
         condition.notify_all();
 
+        while(isTracking) {
+            for(FrameNumber f=0; f<last_frame_done; f++) {
+                int myCallbackRun = std::floor(f / callbackInterval);
+                if(myCallbackRun <= callbackRun)
+                    continue;
+
+                FrameNumber toFrame = (myCallbackRun+1) * callbackInterval;
+                if(toFrame >= last_frame_done || toFrame >= numFrames)
+                    continue;
+
+                callback(this, toFrame);
+                callbackRun = myCallbackRun;
+            }
+            
+            this_thread::sleep_for(chrono::milliseconds(500));
+        }
+
+        reader_thread.join();
         tracker_thread.join();
+        MY_LOG("[FlowLib] finished");
     }
 
     FrameNumber CurrentFrame()
     {
-        return frame_position;
+        return last_frame_done;
     }
 
     FrameNumber GetNumFrames()
@@ -425,21 +335,21 @@ public:
         return demuxer.GetDuration();
     }
 
-    cv::Mat GetMat()
+    bool GetMat(FrameRange range, cv::Mat& buffer)
     {
-        cv::Mat buf;
+        out.rowRange(range.fromFrame, range.toFrame).download(buffer);
+        
+        return true;
+    }
 
-        out.download(buf);
-        
-        // rotate(buf, buf, ROTATE_90_COUNTERCLOCKWISE);
-        // float maxVal = video_size.width * video_size.height * ;
-        // buf.convertTo(buf, CV_32FC1, config.maxValue);
-        
-        return buf;
+    cv::Size GetVideoSize()
+    {
+        return video_size;
     }
 
 protected:
     bool isReading = true;
+    bool isTracking = true;
     bool had_update = false;
     vector<bool> isFrameProcessed;
     FlowProperties& config;
@@ -454,6 +364,8 @@ protected:
     FrameNumber frame_seek = 0;
     FrameNumber numFrames;
     FrameNumber frame_position = 0;
+    FrameNumber last_frame_done = 0;
+
     int frame_skip = 0;
     int frame_skip_counter = 0;
 
@@ -465,7 +377,7 @@ protected:
     bool running = true;
     bool tracker_thread_waiting = false;
     thread tracker_thread;
-    // thread reader_thread;
+    thread reader_thread;
     std::condition_variable condition = {};
     Mat drawBuffer;
     Mat waveBuffer;
@@ -475,57 +387,3 @@ FlowLibShared* CreateFlowLib(const char* videoPath, FlowProperties* properties)
 {
     return new Runner(videoPath, *properties);
 }
-
-// FlowHandle FlowCreateHandle(const char* videoPath, FlowProperties* config)
-// {
-//     Runner* runner = new Runner(videoPath, *config);
-//     MY_LOG("[FlowLib] handle created");
-//     return (FlowHandle)runner;
-// }
-
-// void FlowDestroyHandle(FlowHandle handle)
-// {
-//     Runner* runner = (Runner*)handle;
-//     delete runner;
-//     MY_LOG("[FlowLib] handle destroyed");
-// }
-
-// FrameNumber FlowGetLength(FlowHandle handle)
-// {
-//     Runner* runner = (Runner*)handle;
-//     return runner->GetNumFrames();
-// }
-
-// void FlowDrawRange(FlowHandle handle, FrameRange range, DrawCallback callback, void* userData)
-// {
-//     Runner* runner = (Runner*)handle;
-//     runner->FlowDrawRange(range, callback, userData);
-// }
-
-// void FlowCalcWave(FlowHandle handle, FrameRange range, DrawCallback callback, void* userData)
-// {
-//     Runner* runner = (Runner*)handle;
-//     runner->CalcWave(range, callback, userData);
-// }
-
-// void FlowSetLogger(LoggingCallback callback)
-// {
-//     logger = callback;
-//     MY_LOG("[FlowLib] logger attached");
-// }
-
-// void FlowSave(FlowHandle handle, const char* path)
-// {
-//     FlowDrawRange(handle, {0, FlowGetLength(handle)}, [](void* data, int width, int height, void* userData) {
-//         Mat mat(height, width, CV_32FC1, data);
-//         Mat m2;
-//         mat.convertTo(m2, CV_8UC1, 255.0);
-//         imwrite((const char *) userData, m2);
-//     }, (void*)path);
-// }
-
-// float FlowProgress(FlowHandle handle)
-// {
-//     Runner* runner = (Runner*)handle;
-//     return runner->GetProgress();
-// }

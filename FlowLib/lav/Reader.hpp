@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <functional>
+#include <opencv2/core.hpp>
 
 struct AVFrame;
 
@@ -16,6 +17,7 @@ public:
     virtual int CurrentFrame() = 0;
     virtual int GetNumFrames() = 0;
     virtual int GetNumMs() = 0;
+    cv::Size GetVideoSize();
 };
 
 std::unique_ptr<Reader> CreateReader(const char* path, HandleFrameCallback callback);

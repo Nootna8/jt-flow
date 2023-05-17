@@ -5,6 +5,7 @@ extern "C" {
 };
 
 #include <functional>
+#include <opencv2/core.hpp>
 
 namespace cv {
     class Mat;
@@ -21,7 +22,8 @@ public:
     virtual FrameNumber CurrentFrame() = 0;
     virtual FrameNumber GetNumFrames() = 0;
     virtual FrameNumber GetNumMs() = 0;
-    virtual cv::Mat GetMat() = 0;
+    virtual cv::Size GetVideoSize() = 0;
+    virtual bool GetMat(FrameRange range, cv::Mat& buffer) = 0;
 
     virtual void Run(RunCallback callback, int callbackInterval) = 0;
 };

@@ -67,6 +67,11 @@ public:
         return frame_number;
     }
 
+    cv::Size GetVideoSize()
+    {
+        return cv::Size(dec_ctx_1->width, dec_ctx_1->height);
+    }
+
 protected:
     void init_decoder_1(const char* src_filename);
     void init_encoder_2();

@@ -1,0 +1,31 @@
+{
+  "name": "jt-browser-ext",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "cross-env NODE_DEBUG=1 vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@chainsafe/libp2p-gossipsub": "^7.0.0",
+    "@joe_six/smoothed-z-score-peak-signal-detection": "^0.1.2",
+    "@multiformats/multiaddr": "^12.1.3",
+    "buttplug": "^3.1.1",
+    "cross-env": "^7.0.3",
+    "ipfs-core": "^0.18.0",
+    "js-base64": "^3.7.5",
+    "lodash": "^4.17.21",
+    "node-stdlib-browser": "^1.2.0",
+    "orbit-db": "^0.29.0",
+    "reconnecting-websocket": "^4.4.0",
+    "vue": "^3.2.47"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.17",
+    "@vitejs/plugin-vue": "^4.1.0",
+    "vite": "^4.3.2",
+    "vite-plugin-node-stdlib-browser": "^0.2.1"
+  }
+}

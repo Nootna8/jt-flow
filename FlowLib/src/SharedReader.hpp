@@ -6,6 +6,7 @@ extern "C" {
 
 #include <map>
 #include <cmath>
+#include <string>
 
 struct StreamProgram {
     AVStream* videoStream = nullptr;

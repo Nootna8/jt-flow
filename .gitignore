@@ -5,7 +5,9 @@ FlowLib/build
 out
 *.bmp
 *.png
-Server/node_modules
+node_modules
 Server/ipfs*
 Server/orbitdb
+Server/opencv2
 __pycache__
+videos
